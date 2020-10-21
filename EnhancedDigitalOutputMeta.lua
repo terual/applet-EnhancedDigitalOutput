@@ -27,7 +27,7 @@ oo.class(_M, AppletMeta)
 
 -- custom kernel configuration
 local USB_KERNEL_VERSION = 1
-local USB_KERNEL_URL     = "http://xdevtriodeplugins.xpdev-hosted.com/kernel-digitalout-1.bin"
+local USB_KERNEL_URL     = "http://triodeplugins.googlecode.com/files/kernel-digitalout-1.bin"
 local USB_KERNEL_MD5     = "b1df8c851322d1b2bba0d1507e7e8f2e"
 
 
@@ -213,8 +213,9 @@ end
 
 function cpuIdle(self, force)
 	local filename = "/sys/power/pm_idle_fullspeed"
-	local setting  = (playerPower and cpuActive) and "1" or "0"
-	if self:getSettings()["cpuIdleFullspeed"] or force then
+	local enabled  = self:getSettings()["cpuIdleFullspeed"]
+	local setting  = (enabled and playerPower and cpuActive) and "1" or "0"
+	if enabled or force then
 		_write(filename, setting)
 	end
 end
