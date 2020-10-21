@@ -298,7 +298,7 @@ function _parseCards(self)
 
 	-- read and parse entries
 	for line in cards:lines() do
-		local num, id, desc = string.match(line, "(%d+)%s+%[(.-)%s+%]:%s+(.*)")
+		local num, id, desc = string.match(line, "(%d+)%s+%[(.-)%s*%]:%s+(.*)")
 		if id and id != "TXRX" and id != "fab4" and id != "fab4_1" then
 			-- usb card - get bitdepth info
 			local info = self:_parseStreamInfo(id)
