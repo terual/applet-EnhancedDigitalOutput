@@ -61,7 +61,25 @@ KERNEL_IDLE_SETTING
 	EN	Avoid low power during playback
 
 HELP_KERNEL_IDLE_OPTION
-	EN	This option avoids the cpu entering low power mode during playback.  It is considered experiemental as the impact on sound quality is unknown.
+	EN	This option avoids the cpu entering low power mode during playback
+
+BUFFER_TUNING
+	EN	Buffer Tuning (Experimental)
+
+HELP_BUFFER_TUNING
+	EN	Tuning buffer size may impact sound quality
+
+BUFFER_DEFAULT
+	EN	Default settings
+
+BUFFER_LARGE
+	EN	Large (avoid if synchronized)
+
+BUFFER_SMALL
+	EN	Small (may cause dropouts)
+
+BUFFER_RAND
+	EN	Large + Randomise CPU
 
 REBOOTING
 	EN	Rebooting

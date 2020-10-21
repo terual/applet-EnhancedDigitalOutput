@@ -17,6 +17,8 @@ local Textarea         = require("jive.ui.Textarea")
 local Label            = require("jive.ui.Label")
 local Popup            = require("jive.ui.Popup")
 local Checkbox         = require("jive.ui.Checkbox")
+local RadioGroup       = require("jive.ui.RadioGroup")
+local RadioButton      = require("jive.ui.RadioButton")
 local Slider           = require("jive.ui.Slider")
 local Surface          = require("jive.ui.Surface")
 local Task             = require("jive.ui.Task")
@@ -235,6 +237,40 @@ function optionsMenu(self, menuItem)
 								  self:getSettings()["cpuIdleFullspeed"]
 							),
 					   })
+					   window:addWidget(menu)
+					   window:show()
+				   end,
+	})
+
+	menu:addItem({
+		text = self:string("BUFFER_TUNING"),
+		sound = "WINDOWSHOW",
+		callback = function(event, menuItem)
+					   local options = {
+						   { desc = "BUFFER_DEFAULT", time =  20000, count =   2 },
+						   { desc = "BUFFER_LARGE",   time = 100000, count =   4 },
+						   { desc = "BUFFER_SMALL",   time =   4000, count =   2 },
+						   { desc = "BUFFER_RAND",    time = 100000, count = 104 },
+					   }
+					   local window = Window("text_list", menuItem.text)
+					   local menu = SimpleMenu("menu")
+					   local group = RadioGroup()
+					   local settings = self:getSettings()
+					   menu:setHeaderWidget(Textarea("help_text", self:string("HELP_BUFFER_TUNING")))
+					   for _, opt in ipairs(options) do
+						   menu:addItem({
+								text = self:string(opt.desc),
+								style = 'item_choice',
+								check = RadioButton("radio", group,
+													function(event, menuItem)
+														settings.bufferTime = opt.time
+														settings.periodCount = opt.count
+														self:storeSettings()
+														self:_restart()
+													end,
+													settings.bufferTime == opt.time and settings.periodCount == opt.count)
+						   })
+					   end
 					   window:addWidget(menu)
 					   window:show()
 				   end,
