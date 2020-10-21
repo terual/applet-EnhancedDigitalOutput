@@ -62,7 +62,7 @@ function deviceMenu(self, menuItem, firstUse)
 				sound = "WINDOWSHOW",
 				callback = function(event, menuItem)
 							   timer:stop()
-							   self:_setCardAndReboot("default", 24, false)
+							   self:_setCardAndReboot("default", false)
 						   end,
 			}
 		end
@@ -83,20 +83,20 @@ function deviceMenu(self, menuItem, firstUse)
 											text = self:string("USB1_DAC_NO_HUB"),
 											style = 'item_choice',
 											callback = function(event, menuItem)
-														   self:_setCardAndReboot(card.id, card.bits, true)
+														   self:_setCardAndReboot(card.id, true)
 													   end,
 									   })
 									   menu:addItem({
 											text = self:string("USB1_DAC_HUB"),
 											style = 'item_choice',
 											callback = function(event, menuItem)
-														   self:_setCardAndReboot(card.id, card.bits, false)
+														   self:_setCardAndReboot(card.id, false)
 													   end,
 									   })
 									   window:addWidget(menu)
 									   window:show()
 								   else
-									   self:_setCardAndReboot(card.id, card.bits, false)
+									   self:_setCardAndReboot(card.id, false)
 								   end
 							   end,
 				}
@@ -256,15 +256,15 @@ function _parseCards(self)
 	end
 
 	-- internal cards, put first in list
-	t[1] = { id = "TXRX", desc = "Digital Only", bits = 24 }
+	t[1] = { id = "TXRX", desc = "Digital Only" }
 
 	-- read and parse entries
 	for line in cards:lines() do
 		local num, id, desc = string.match(line, "(%d+)%s+%[(.-)%s+%]:%s+(.*)")
 		if id and id != "TXRX" and id != "fab4" and id != "fab4_1" then
 			-- usb card - get bitdepth info
-			local bits, needshub = self:_parseStreamInfo(id)
-			t[#t+1] = { id = id, desc = desc, bits = bits, needshub = needshub }
+			local info = self:_parseStreamInfo(id)
+			t[#t+1] = { id = id, desc = desc, needshub = info.needshub }
 		end
 	end
 
@@ -276,74 +276,104 @@ end
 
 function _parseStreamInfo(self, card)
 	local bits, needhub, async
+	local t = {}
 	
 	local cards = io.open("/proc/asound/" .. card .. "/stream0", "r")
 	
 	if cards == nil then
 		log:error("/proc/asound/" .. card .. "/stream0 could not be opened")
-		return 24, true
+		return t
 	end
 	
-	for line in cards:lines() do
-		-- detect full speed async devices without external hub
-		local id, speed = string.match(line, "usb%-fsl%-ehci%.(.-),%s(%w+)%sspeed%s:")
-		if id and speed then
-			log:debug("id: ", id, " speed: ", speed)
-			if id == "0-1" and speed == "full" then
-				log:debug("needhub")
-				needhub = true
-			end
+	-- parsing helper functions
+	local last
+	local parse = function(regexp, opt)
+		local tmp = last or cards:read()
+		if tmp == nil then
+			return
 		end
-		local isasync = string.match(line, "OUT.*ASYNC")
-		if isasync then
-			log:debug("async")
-			async = true
+		local r1, r2, r3 = string.match(tmp, regexp)
+		if opt and r1 == nil and r2 == nil and r3 == nil then
+			last = tmp
+		else
+			last = nil
+		end
+		return r1, r2, r3
+	end
+
+	local skip = function(number) 
+		if last and number > 0 then
+			last = nil
+			number = number - 1
+		end
+		while number > 0 do
+			cards:read()
+			number = number - 1
+		end
+	end
+
+	local eof = function()
+		if last then return false end
+		last = cards:read()
+		return last == nil
+	end
+
+	-- detect full speed async devices without external hub
+	t.id, t.speed = parse("usb%-fsl%-ehci%.(.-),%s(%w+)%sspeed%s:")
+	t.hub = (t.id != "0-1")
+	skip(2)
+
+	-- detect status
+	t.status = parse("  Status: (%w+)")
+
+	if t.status == "Running" then
+		t.interface = parse("    Interface = (%d+)")
+		t.altset    = parse("    Altset = (%d+)")
+		skip(2)
+		t.momfreq   = parse("    Momentary freq = (%d+) Hz")
+		t.feedbkfmt = parse("    Feedback Format = (.*)", true)
+	end
+	
+	local fmts = {}
+
+	while not eof() do
+
+		local intf = parse("  Interface (%d+)")
+		local alt  = parse("    Altset (%d+)")
+		local fmt  = parse("    Format: (.*)")
+		local chan = parse("    Channels: (%w+)")
+		local type = parse("    Endpoint: %d+ %w+ %((%w+)%)")
+		local rate = parse("    Rates: (.*)")
+		local int  = parse("    Data packet interval: (.*)")
+		skip(2)
+
+		fmts[#fmts+1] = { intf = intf, alt = alt, fmt = fmt, chan = chan, type = type, rate = rate, int = int }
+
+		if t.interface == intf and t.altset == alt then
+			t.fmt = fmts[#fmts]
 		end
 
-		-- find bit depths available, preferring 24 bits, handle new and old format strings
-		local formats = string.match(line, "%s+Format:%s(.*)")
-		if formats then
-			formats = formats .. " "
-			for fmt in string.gmatch(formats, "(.-)%s") do
-				if bits == nill and string.match(fmt, "32") or fmt == "0xa" then
-					log:debug("32 bit format: ", fmt)
-					bits = 32
-				elseif string.match(fmt, "24") or fmt == "0x20" or fmt == "0x6" then
-					log:debug("24 bit format: ", fmt)
-					bits = 24
-				elseif bits == nil and string.match(fmt, "16") or fmt == "0x2" then
-					log:debug("16 bit format: ", fmt)
-					bits = 16
-				else
-					log:debug("unknown format: ", fmt)
-				end
-			end
+		if type == "ASYNC" and not t.hub then
+			t.needshub = true
 		end
+
 	end
 	
+	t.fmts = fmts
+
 	cards:close()
-	
-	return bits or 24, needhub and async
+
+	return t
 end
 
 
-function _setCardAndReboot(self, card, bits, embeddedTTHack)
+function _setCardAndReboot(self, card, embeddedTTHack)
 	local s = self:getSettings()
 
 	s.playbackDevice = card
-	s.sampleSize = bits
 	s.embeddedTTHack = embeddedTTHack
 
 	self:storeSettings()
-
-	-- install updated file if needed
-	local newbinary = io.open("/usr/share/jive/applets/EnhancedDigitalOutput/jive_alsa", "r")
-	if newbinary then
-		log:info("installing modified jive_alsa")
-		newbinary:close()
-		os.execute("mv /usr/share/jive/applets/EnhancedDigitalOutput/jive_alsa /usr/bin/jive_alsa")
-		os.execute("chmod 755 /usr/bin/jive_alsa")
-	end
 
 	self:_restart()
 end
@@ -361,18 +391,48 @@ function _showStats(self, card, desc)
 	info:close()
 
 	local window = Window("text_list", desc)
-	local textarea = Textarea("multiline_text", "")
-	window:addWidget(textarea)
+	local menu = SimpleMenu("menu")
+	window:addWidget(menu)
 	self:tieAndShowWindow(window)
 
+	-- refreshing menu to detect hotplugging of usb dacs
+	local timer
+
 	local display = function()
-						log:info("fetching info...")
-						local info = io.open("/proc/asound/" .. card .. "/stream0", "r")
-						local text = ""
-						for line in info:lines() do
-							text = text .. line .. "\n"
+						log:debug("fetching info...")
+						local info = self:_parseStreamInfo(card)
+						local items = {}
+						local entry = function(text)
+										  items[#items+1] = {
+											  text = text,
+											  style = "item_no_arrow",
+										  }
+									  end
+						entry("Status: " .. info.status)
+						entry("Speed: " .. (info.speed == "full" and "Full" or "High"))
+						entry("Connection: " .. (info.hub and "via Hub" or "Direct"))
+						if info.status == "Running" then
+							local first, rest = string.match(info.fmt.type, "(%w)(%w+)")
+							entry("Type: " .. string.upper(first) .. string.lower(rest))
+							entry("Frequency: " .. info.momfreq .. " Hz")
+							entry("Format: " .. info.fmt.fmt)
+							entry("Rates: " .. info.fmt.rate)
+							entry("Feedback Format: " .. ((info.feedbkfmt == "10.14" and "Full (10.14)") or 
+														  (info.feedbkfmt == "16.16" and "High (16.16)") or "None"))
+							entry("Interval: " .. info.fmt.int)
+						else
+							local i = 1
+							while info.fmts[i] do
+								local fmt = info.fmts[i]
+								local cnt = #info.fmts > 1 and (" [" .. i .. "]: ") or ": "
+								local first, rest = string.match(fmt.type, "(%w)(%w+)")
+								entry("Type" .. cnt .. string.upper(first) .. string.lower(rest))
+								entry("Format" .. cnt .. fmt.fmt)
+								entry("Rates" .. cnt .. fmt.rate)
+								i = i + 1
+							end
 						end
-						textarea:setValue(text)
+						menu:setItems(items, #items)
 					end
 	
 	-- initial display

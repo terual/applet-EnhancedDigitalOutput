@@ -42,7 +42,6 @@ end
 function defaultSettings(self)
 	return {
 		playbackDevice = "default",
-		sampleSize = 24,
 		bufferTime = 20000,
 		periodCount = 2,
 		autoKernelUpdate = true,
@@ -90,6 +89,15 @@ function registerApplet(meta)
 		end
 	end
 
+	-- check if this is a new install and if so ensure custom jive_alsa is installed
+	local newbinary = io.open("/usr/share/jive/applets/EnhancedDigitalOutput/jive_alsa", "r")
+	if not updating and newbinary then
+		log:info("installing modified jive_alsa")
+		newbinary:close()
+		os.execute("mv /usr/share/jive/applets/EnhancedDigitalOutput/jive_alsa /usr/bin/jive_alsa")
+		os.execute("chmod 755 /usr/bin/jive_alsa")
+	end
+
 	-- if usb hack then set kernel option
 	if settings.embeddedTTHack then
 		_write("/sys/module/snd_usb_audio/parameters/async_embedded_tt_hack", "1")
@@ -98,7 +106,7 @@ function registerApplet(meta)
 	-- check output device is available else bring up popup and restart if output attaches
 	local playbackDeviceFound = true
 
-	if settings.playbackDevice != "default" then
+	if not updating and settings.playbackDevice != "default" then
 
 		local fh = io.open("/proc/asound/" .. settings.playbackDevice)
 		if fh == nil then
@@ -142,21 +150,23 @@ function registerApplet(meta)
 
 	end
 
-	if playbackDeviceFound then
+	if not updating and playbackDeviceFound then
 
 		-- init the decoder with our settings - we are loaded earlier than SqueezeboxFab4, decode:open ignores reopen
 		local playbackDevice = (settings.playbackDevice != "default" and "hw:CARD=" or "") .. settings.playbackDevice
-		log:info("playbackDevice: ", playbackDevice, " sampleSize: ", settings.sampleSize, " bufferTime: ", settings.bufferTime, " periodCount: ", settings.periodCount)
+		log:info("playbackDevice: ", playbackDevice, " bufferTime: ", settings.bufferTime, " periodCount: ", settings.periodCount)
 		Decode:open({
 			alsaPlaybackDevice = playbackDevice,
-			alsaSampleSize = settings.sampleSize,
+			alsaSampleSize = 24,            -- auto detected by our jive_alsa
 			alsaPlaybackBufferTime = settings.bufferTime,
 			alsaPlaybackPeriodCount = settings.periodCount,
-			alsaEffectsDevice = "disabled", -- rely on alsa fork failing for this as device can't be opened
+			alsaEffectsDevice = "disabled", -- rely on jive_alsa exiting as device can't be opened
 		})
 		
-		-- if usb output increase priority of usb irq task
-		if settings.playbackDevice != "fab4" and settings.playbackDevice != "default" then
+		-- if spdif or usb output increase priority of relavent irq task
+		if settings.playbackDevice == "TXRX" then
+			os.execute("chrt -f -p 59 `pidof 'IRQ-47'`")
+		elseif settings.playbackDevice != "default" then
 			os.execute("chrt -f -p 59 `pidof 'IRQ-37'`")
 		end
 	
@@ -175,7 +185,7 @@ function registerApplet(meta)
 	jiveMain:addItem(
 		meta:menuItem('appletEnhancedDigitalOutputOptions', 'advancedSettings', meta:string("APPLET_NAME"), 
 			function(applet, ...) 
-				applet.cpuIdle = function() meta:cpuIdle() end
+				applet.cpuIdle = function() meta:cpuIdle(true) end
 				applet.kernel = { url = USB_KERNEL_URL, md5 = USB_KERNEL_MD5 }
 				applet:optionsMenu(...) 
 			end
@@ -201,11 +211,10 @@ function notify_playerPower(self, player, power)
 end
 
 
-function cpuIdle(self)
+function cpuIdle(self, force)
 	local filename = "/sys/power/pm_idle_fullspeed"
 	local setting  = (playerPower and cpuActive) and "1" or "0"
-	if self:getSettings()["cpuIdleFullspeed"] then
-		-- FIXME - add delay here to suppress changes on fwd?
+	if self:getSettings()["cpuIdleFullspeed"] or force then
 		_write(filename, setting)
 	end
 end
