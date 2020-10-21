@@ -353,7 +353,8 @@ function _parseStreamInfo(self, card)
 			t.fmt = fmts[#fmts]
 		end
 
-		if type == "ASYNC" and not t.hub then
+		-- touch needs a hub in this case only due to imx35 embedded TT limitations
+		if type == "ASYNC" and t.speed == "full" and not t.hub then
 			t.needshub = true
 		end
 
