@@ -251,6 +251,8 @@ function optionsMenu(self, menuItem)
 						   { desc = "BUFFER_LARGE",   time = 100000, count =   4 },
 						   { desc = "BUFFER_SMALL",   time =   4000, count =   2 },
 						   { desc = "BUFFER_RAND",    time = 100000, count = 104 },
+						   { desc = "BUFFER_VLARGE",  time =4000000, count =   4 },
+						   { desc = "BUFFER_VLRAND",  time =4000000, count = 104 },
 					   }
 					   local window = Window("text_list", menuItem.text)
 					   local menu = SimpleMenu("menu")

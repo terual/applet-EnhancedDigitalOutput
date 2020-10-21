@@ -81,6 +81,12 @@ BUFFER_SMALL
 BUFFER_RAND
 	EN	Large + Randomise CPU
 
+BUFFER_VLARGE
+	EN	Very Large (USB Only)
+
+BUFFER_VLRAND
+	EN	Very Large + Randomise CPU (USB Only)
+
 REBOOTING
 	EN	Rebooting
 
